@@ -1,0 +1,6 @@
+{
+  "name": "Apex Arena 3D",
+  "description": "Broadcast-grade 3D professional wrestling arena built with Three.js featuring a detailed ring, TitanTron entrance stage, elevated ramp, ringside announce zone, and enclosed stadium.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
