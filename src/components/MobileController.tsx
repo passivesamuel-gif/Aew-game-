@@ -180,11 +180,45 @@ export function MobileController({
     onJoystickMove(0, 0, false);
   };
 
+  if (wrestlerHud.matchPhase === 'pinning') {
+    return (
+      <div className="pointer-events-none fixed inset-x-0 bottom-5 z-20 flex justify-center px-4 touch-none select-none">
+        <ActionCircle
+          label="Escape"
+          ariaLabel="Attempt Pin Escape"
+          onTrigger={onPin}
+          onUserGesture={onUserGesture}
+          highlighted
+          posClass="relative right-auto bottom-auto"
+          sizeClass="h-[78px] w-[78px]"
+          className="pointer-events-auto border-emerald-200 bg-gradient-to-b from-emerald-400 to-emerald-700 shadow-[0_0_26px_rgba(16,185,129,0.62)]"
+          icon={<Trophy className="h-7 w-7" />}
+        />
+      </div>
+    );
+  }
+
   if (wrestlerHud.matchPhase !== 'active') {
     return null;
   }
 
   const { actions } = wrestlerHud;
+  const contextLabel = actions.finisher.visible
+    ? actions.finisher.label
+    : actions.dive.visible
+      ? actions.dive.label
+      : actions.climb.visible
+        ? actions.climb.label
+        : actions.whip.visible
+          ? actions.whip.label
+          : '';
+  const triggerContext = actions.finisher.visible
+    ? onFinisher
+    : actions.dive.visible
+      ? onDive
+      : actions.climb.visible
+        ? onClimb
+        : onWhip;
 
   return (
     <div className="pointer-events-none fixed inset-x-0 bottom-0 z-20 flex items-end justify-between px-4 pb-4 sm:px-7 sm:pb-6 touch-none select-none">
@@ -229,7 +263,7 @@ export function MobileController({
 
       {/* BOTTOM-RIGHT: Contextual FIFA Mobile-style Circular Action Cluster */}
       <div className="pointer-events-none relative h-[220px] w-[224px] sm:h-[232px] sm:w-[236px]">
-        {actions.finisher.visible && (
+        {false && actions.finisher.visible && (
           <ActionCircle
             label={actions.finisher.label}
             ariaLabel="Execute Finisher"
@@ -257,7 +291,7 @@ export function MobileController({
           />
         )}
 
-        {actions.dive.visible && (
+        {false && actions.dive.visible && (
           <ActionCircle
             label={actions.dive.label}
             ariaLabel="Diving Attack"
@@ -271,7 +305,7 @@ export function MobileController({
           />
         )}
 
-        {actions.climb.visible && (
+        {false && actions.climb.visible && (
           <ActionCircle
             label={actions.climb.label}
             ariaLabel="Climb Turnbuckle"
@@ -297,7 +331,7 @@ export function MobileController({
           />
         )}
 
-        {actions.whip.visible && (
+        {false && actions.whip.visible && (
           <ActionCircle
             label={actions.whip.label}
             ariaLabel={actions.whip.label}
@@ -321,6 +355,20 @@ export function MobileController({
             sizeClass="h-[56px] w-[56px]"
             className="border-violet-200/80 bg-gradient-to-b from-violet-500 to-purple-800"
             icon={<Shield className="h-5 w-5" />}
+          />
+        )}
+
+        {contextLabel && (
+          <ActionCircle
+            label={contextLabel}
+            ariaLabel={contextLabel}
+            onTrigger={triggerContext}
+            onUserGesture={onUserGesture}
+            highlighted={actions.finisher.visible || actions.dive.visible}
+            posClass="right-[4px] bottom-[88px]"
+            sizeClass="h-[58px] w-[58px]"
+            className="border-cyan-200/80 bg-gradient-to-b from-cyan-400 to-blue-700"
+            icon={<ArrowUpRight className="h-5 w-5" />}
           />
         )}
 

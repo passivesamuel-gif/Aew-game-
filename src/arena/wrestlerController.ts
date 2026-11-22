@@ -46,6 +46,7 @@ export interface WrestlerHudSnapshot {
   entranceName: string | null;
   entranceSubtitle: string | null;
   pinCount: 0 | 1 | 2 | 3;
+  outsideCount: number;
   winnerName: string | null;
   playerHp: number;
   playerStamina: number;
@@ -243,6 +244,9 @@ export class WrestlerArenaController {
   private pinDefender: WrestlerActor | null = null;
   private pinWillKickout = true;
   private winnerName: string | null = null;
+  private outsideCountElapsed = 0;
+  private outsideCount = 0;
+  private outsideCountActor: WrestlerActor | null = null;
 
   private lastMoveBanner: string | null = null;
   private moveBannerTimer = 0;
@@ -410,6 +414,9 @@ export class WrestlerArenaController {
     this.pinAttacker = null;
     this.pinDefender = null;
     this.lastMoveBanner = null;
+    this.outsideCountElapsed = 0;
+    this.outsideCount = 0;
+    this.outsideCountActor = null;
 
     this.resetActorForMatch(this.rival, new THREE.Vector3(0, 1.38, -20.1), 0, false);
     this.resetActorForMatch(this.player, new THREE.Vector3(0, 1.38, -20.3), 0, false);
@@ -701,6 +708,10 @@ export class WrestlerArenaController {
   }
 
   public triggerPin() {
+    if (this.matchPhase === 'pinning') {
+      this.tryPlayerKickout();
+      return;
+    }
     if (this.matchPhase !== 'active') return;
     const p = this.player;
     const r = this.rival;
@@ -711,6 +722,29 @@ export class WrestlerArenaController {
     if ((r.state === 'knockdown' || r.state === 'get-up') && dist < 2.2) {
       this.startPinAttempt(p, r);
     }
+  }
+
+  private tryPlayerKickout() {
+    if (this.pinDefender !== this.player || this.pinCount < 1) return;
+    const damageFactor = 1 - this.player.hp / 100;
+    const windowStart = 1.72 + damageFactor * 0.18;
+    const windowEnd = 2.24 - damageFactor * 0.16;
+    if (this.pinElapsed < windowStart || this.pinElapsed > windowEnd) return;
+
+    const attacker = this.pinAttacker;
+    if (!attacker) return;
+    this.matchPhase = 'active';
+    this.pinCount = 0;
+    attacker.state = 'idle';
+    attacker.vel.set(-Math.sin(attacker.yaw) * 2.5, 0, -Math.cos(attacker.yaw) * 2.5);
+    this.player.state = 'get-up';
+    this.player.stateTimer = 0;
+    this.player.phaseDuration = 0.58;
+    this.player.momentum = Math.min(100, this.player.momentum + 18);
+    this.callbacks.onImpactSound?.(false);
+    this.setMoveBanner(`${this.player.displayName} KICKS OUT!`);
+    this.pinAttacker = null;
+    this.pinDefender = null;
   }
 
   public triggerReverse() {
@@ -1133,6 +1167,7 @@ export class WrestlerArenaController {
     } else if (this.matchPhase === 'pinning') {
       this.stepPinningSequence(clampedDt);
     } else if (this.matchPhase === 'active') {
+      this.stepOutsideCount(clampedDt);
       this.stepPlayerIntent(clampedDt, camera, input);
       this.stepRivalAi(clampedDt);
     } else if (this.matchPhase === 'finished') {
@@ -1257,13 +1292,34 @@ export class WrestlerArenaController {
     atk.state = 'pin-cover';
     def.state = 'pin-trapped';
 
+    const ropePortal = findNearestRopePortal(def.pos.x, def.pos.z);
+    if (ropePortal.distToRope < 0.72) {
+      this.matchPhase = 'active';
+      this.pinCount = 0;
+      atk.state = 'idle';
+      def.state = 'get-up';
+      def.stateTimer = 0;
+      def.phaseDuration = 0.58;
+      def.pos.x = THREE.MathUtils.clamp(def.pos.x - ropePortal.outX * 0.42, -2.72, 2.72);
+      def.pos.z = THREE.MathUtils.clamp(def.pos.z - ropePortal.outZ * 0.42, -2.72, 2.72);
+      this.pinAttacker = null;
+      this.pinDefender = null;
+      this.setMoveBanner('ROPE BREAK!');
+      return;
+    }
+
     if (this.pinCount === 0 && this.pinElapsed >= 0.7) {
       this.pinCount = 1;
       this.callbacks.onRefCount?.(1);
     } else if (this.pinCount === 1 && this.pinElapsed >= 1.65) {
       this.pinCount = 2;
       this.callbacks.onRefCount?.(2);
-    } else if (this.pinCount === 2 && this.pinWillKickout && this.pinElapsed >= 2.25) {
+    } else if (
+      this.pinCount === 2 &&
+      this.pinWillKickout &&
+      this.pinDefender !== this.player &&
+      this.pinElapsed >= 2.25
+    ) {
       // Dramatic 2-count kickout!
       this.matchPhase = 'active';
       this.pinCount = 0;
@@ -1278,7 +1334,7 @@ export class WrestlerArenaController {
       this.pinAttacker = null;
       this.pinDefender = null;
       return;
-    } else if (this.pinCount === 2 && !this.pinWillKickout && this.pinElapsed >= 2.65) {
+    } else if (this.pinCount === 2 && this.pinElapsed >= 2.9) {
       // 1... 2... 3!! Match won!
       this.pinCount = 3;
       this.callbacks.onRefCount?.(3);
@@ -1291,6 +1347,45 @@ export class WrestlerArenaController {
       def.state = 'knockdown';
       this.callbacks.onPyroBurst?.(atk.id === 'player' ? 'gold' : 'cobalt', 'corner');
       this.setMoveBanner(`WINNER: ${atk.displayName}`);
+    }
+  }
+
+  private stepOutsideCount(dt: number) {
+    const playerOutside = !this.isActorInRing(this.player) && !this.isActorOnApron(this.player) && this.player.pos.y < 0.72;
+    const rivalOutside = !this.isActorInRing(this.rival) && !this.isActorOnApron(this.rival) && this.rival.pos.y < 0.72;
+    if (!playerOutside && !rivalOutside) {
+      this.outsideCountElapsed = 0;
+      this.outsideCount = 0;
+      this.outsideCountActor = null;
+      return;
+    }
+
+    const actor = playerOutside && rivalOutside ? null : playerOutside ? this.player : this.rival;
+    if (actor !== this.outsideCountActor) {
+      this.outsideCountActor = actor;
+      this.outsideCountElapsed = 0;
+      this.outsideCount = 0;
+    }
+    this.outsideCountElapsed += dt;
+    const nextCount = Math.min(10, Math.floor(this.outsideCountElapsed));
+    if (nextCount > this.outsideCount) {
+      this.outsideCount = nextCount;
+      if (this.outsideCount <= 3) this.callbacks.onRefCount?.(this.outsideCount as 1 | 2 | 3);
+      this.setMoveBanner(`OUTSIDE COUNT ${this.outsideCount}`);
+    }
+
+    if (this.outsideCount < 10) return;
+    this.matchPhase = 'finished';
+    this.callbacks.onRingBell?.();
+    if (!actor) {
+      this.winnerName = 'DOUBLE COUNT-OUT — DRAW';
+      this.setMoveBanner('DOUBLE COUNT-OUT');
+    } else {
+      const winner = actor === this.player ? this.rival : this.player;
+      this.winnerName = winner.displayName;
+      winner.state = 'victory-pose';
+      actor.state = 'knockdown';
+      this.setMoveBanner(`COUNT-OUT WINNER: ${winner.displayName}`);
     }
   }
 
@@ -2312,6 +2407,7 @@ export class WrestlerArenaController {
       entranceName,
       entranceSubtitle,
       pinCount: this.pinCount,
+      outsideCount: this.outsideCount,
       winnerName: this.winnerName,
       playerHp: Math.round(p.hp),
       playerStamina: Math.round(p.stamina),
@@ -2337,9 +2433,9 @@ export class WrestlerArenaController {
           label: whipLabel,
         },
         pin: {
-          visible: canPin,
-          label: 'Pin',
-          highlighted: canPin,
+          visible: canPin || (this.matchPhase === 'pinning' && this.pinDefender === p),
+          label: this.matchPhase === 'pinning' && this.pinDefender === p ? 'Escape' : 'Pin',
+          highlighted: canPin || (this.matchPhase === 'pinning' && this.pinDefender === p),
         },
         reverse: {
           visible: inActive && !perched && p.reverseCooldown <= 0,

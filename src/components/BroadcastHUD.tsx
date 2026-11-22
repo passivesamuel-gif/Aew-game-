@@ -126,6 +126,12 @@ export function BroadcastHUD({
         </div>
       )}
 
+      {wrestlerHud.outsideCount > 0 && !isFinished && (
+        <div className="pointer-events-none absolute top-[112px] left-1/2 -translate-x-1/2 rounded-md border border-rose-400/70 bg-[#0b0f19]/90 px-4 py-1 font-broadcast text-xs font-black tracking-[0.18em] text-rose-300 uppercase shadow-lg">
+          Referee count · {wrestlerHud.outsideCount}/10
+        </div>
+      )}
+
       {!isEntrance && !isFinished && (
         <div className="pointer-events-none absolute bottom-3 left-1/2 hidden -translate-x-1/2 rounded-lg border border-slate-700/70 bg-[#0b0f19]/80 px-3 py-2 text-[10px] text-slate-300 shadow-xl sm:block">
           <div className="flex items-center gap-3 whitespace-nowrap font-semibold uppercase tracking-wider">
@@ -140,10 +146,17 @@ export function BroadcastHUD({
       )}
 
       {/* PINFALL REFEREE COUNT OVERLAY */}
-      {isPinning && wrestlerHud.pinCount > 0 && (
+  {isPinning && wrestlerHud.pinCount > 0 && (
         <div className="pointer-events-none flex flex-col items-center justify-center">
           <div className="font-broadcast text-6xl sm:text-7xl font-black tracking-tight text-amber-300 drop-shadow-[0_4px_16px_rgba(0,0,0,0.9)]">
             {wrestlerHud.pinCount}
+          </div>
+          <div className="mt-2 w-52 rounded-md border border-slate-500/70 bg-[#0b0f19]/88 px-3 py-2 text-center shadow-xl">
+            <div className="font-broadcast text-[10px] font-bold tracking-[0.18em] text-slate-300 uppercase">Tap P / Escape at the mark</div>
+            <div className="relative mt-2 h-2 overflow-hidden rounded-full bg-slate-700">
+              <div className="absolute left-[42%] top-0 h-full w-[16%] rounded-full bg-emerald-300 shadow-[0_0_10px_rgba(110,231,183,0.85)]" />
+              <div className="pin-escape-marker absolute top-[-3px] h-4 w-1 rounded-full bg-amber-300 shadow-[0_0_8px_rgba(252,211,77,0.9)]" />
+            </div>
           </div>
         </div>
       )}
@@ -175,20 +188,15 @@ export function BroadcastHUD({
 
       {/* MATCH WINNER & REMATCH OVERLAY */}
       {isFinished && (
-        <div className="pointer-events-none flex flex-1 items-center justify-center">
-          <div className="pointer-events-auto flex flex-col items-center rounded-xl border border-amber-400/75 bg-[#0b0f19]/94 px-7 py-6 text-center shadow-2xl">
-            <p className="text-xs font-bold tracking-[0.22em] text-amber-300 uppercase">
-              Winner By Pinfall
-            </p>
-            <h2 className="mt-1 font-broadcast text-3xl sm:text-4xl font-black tracking-wider text-white uppercase">
-              {wrestlerHud.winnerName}
-            </h2>
+        <div className="pointer-events-none flex flex-1 items-end justify-center pb-4 sm:pb-8">
+          <div className="pointer-events-auto flex items-center gap-3 rounded-lg border border-amber-400/55 bg-[#0b0f19]/86 px-3 py-2 text-center shadow-xl">
+            <span className="font-broadcast text-xs font-bold tracking-[0.18em] text-amber-300 uppercase">Match complete · {wrestlerHud.winnerName}</span>
             <button
               type="button"
               onClick={onRematch}
-              className="mt-5 inline-flex h-12 items-center gap-2 rounded-lg bg-amber-400 px-6 font-broadcast text-sm font-black tracking-wider text-slate-950 uppercase shadow-lg transition-transform active:scale-95 hover:bg-amber-300 whitespace-nowrap"
+              className="inline-flex h-9 items-center gap-2 rounded-md bg-amber-400 px-3 font-broadcast text-xs font-black tracking-wider text-slate-950 uppercase transition-transform active:scale-95 hover:bg-amber-300 whitespace-nowrap"
             >
-              <RotateCcw className="h-4 w-4" />
+              <RotateCcw className="h-3.5 w-3.5" />
               <span>Rematch</span>
             </button>
           </div>

@@ -28,8 +28,8 @@ export const WRESTLER_ASSET_MANIFEST: Record<WrestlerId, WrestlerAssetDefinition
 
 export const REFEREE_ASSET_MANIFEST: RefereeAssetDefinition = {
   id: 'referee',
-  displayName: 'Referee',
-  assetPath: '/assets/referee/Referee.glb',
+  displayName: 'Daniel Brooks',
+  assetPath: '/assets/referee/daniel_brooks_referee.glb',
 };
 
 export const ASSET_MANIFEST = {

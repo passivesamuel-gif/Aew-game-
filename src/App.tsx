@@ -17,6 +17,7 @@ const INITIAL_WRESTLER_HUD: WrestlerHudSnapshot = {
   entranceName: 'VORTEX',
   entranceSubtitle: 'THE BLUEPRINT · CHALLENGING TONIGHT',
   pinCount: 0,
+  outsideCount: 0,
   winnerName: null,
   playerHp: 100,
   playerStamina: 100,
@@ -228,6 +229,7 @@ export default function App() {
             </div>
             <button type="button" onClick={handleStartMatch} className="mt-6 h-12 w-full rounded-lg bg-amber-400 px-5 font-broadcast text-sm font-black tracking-[0.18em] text-slate-950 uppercase transition hover:bg-amber-300 active:scale-[0.99]">Enter the arena</button>
             <p className="mt-3 text-center text-[11px] text-slate-500">Supplied GLB visuals load in the background; if a file fails, the existing procedural rig remains active.</p>
+            <p className="mt-1 text-center text-[11px] text-slate-600">Licensed wrestler entrance themes are unavailable; the match uses the built-in procedural arena bed.</p>
           </div>
         </section>
       )}

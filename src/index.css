@@ -25,3 +25,13 @@
   font-family: "Arial Narrow", "Impact", "Helvetica Neue", Arial, sans-serif;
   letter-spacing: 0.04em;
 }
+
+@keyframes pin-escape-sweep {
+  0%,
+  100% { left: 2%; }
+  50% { left: 96%; }
+}
+
+.pin-escape-marker {
+  animation: pin-escape-sweep 1.55s linear infinite;
+}

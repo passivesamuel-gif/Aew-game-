@@ -12,6 +12,7 @@ import { buildEntranceStage, type StageHandle } from './buildStage';
 import { buildStadiumEnvironment, type StadiumHandle } from './buildStadium';
 import { CrowdAudienceSystem } from './crowdSystem';
 import { ArenaPyroSystem } from './pyroEffects';
+import { RefereeSystem } from './refereeSystem';
 import { AnimatedLedManager } from './textures';
 import { SHOW_THEMES } from './themes';
 import type { LightingMode, ShowThemeId } from './types';
@@ -55,6 +56,7 @@ export class ArenaEngine {
   private stadium: StadiumHandle;
   private crowd: CrowdAudienceSystem;
   private pyro: ArenaPyroSystem;
+  private referee: RefereeSystem;
   private wrestlers: WrestlerArenaController;
 
   // Lighting rig
@@ -188,6 +190,7 @@ export class ArenaEngine {
     this.stadium = buildStadiumEnvironment(initialTheme, this.leds);
     this.crowd = new CrowdAudienceSystem(maxAniso, this.isSoftwareGl);
     this.pyro = new ArenaPyroSystem();
+    this.referee = new RefereeSystem();
 
     // Lighting Rig
     this.hemiLight = new THREE.HemisphereLight(0x8ea4c8, 0x0d121d, 0.45);
@@ -264,6 +267,7 @@ export class ArenaEngine {
       },
       onRefCount: (count) => {
         this.audio.playRefCount(count);
+        this.referee.setCount(count);
         this.emitHudImmediate();
       },
     }, false, playerName, rivalName, playerId, rivalId);
@@ -274,6 +278,7 @@ export class ArenaEngine {
     this.scene.add(this.stadium.group);
     this.scene.add(this.crowd.group);
     this.scene.add(this.pyro.group);
+    this.scene.add(this.referee.group);
     this.scene.add(this.wrestlers.group);
 
     // Restrained Post-processing Bloom on Hardware GPU only
@@ -686,6 +691,13 @@ export class ArenaEngine {
       if (!this.contextLost) {
         this.resolveCombinedInput();
         this.wrestlers.update(dt, this.camera, this.combinedInput);
+        this.referee.update(
+          dt,
+          this.wrestlers.getPlayerPosition(_PLAYER_POS),
+          this.wrestlers.getRivalPosition(_RIVAL_POS),
+          this.wrestlers.getMatchPhase(),
+          this.wrestlers.getHudSnapshot().pinCount,
+        );
         this.updateBroadcastCamera(dt);
 
         if (this.activeRopeDrag && this.activeRopeDrag.moved) {
@@ -765,6 +777,7 @@ export class ArenaEngine {
     this.ringside.dispose();
     this.stadium.dispose();
     this.crowd.dispose();
+    this.referee.dispose();
     this.leds.dispose();
     this.audio.dispose();
 
