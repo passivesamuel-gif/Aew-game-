@@ -345,6 +345,11 @@ export class ArenaEngine {
     this.emitHudImmediate();
   }
 
+  public triggerSubmission() {
+    this.wrestlers.triggerSubmission();
+    this.emitHudImmediate();
+  }
+
   public triggerWhipOrTraversal() {
     this.resolveCombinedInput();
     this.wrestlers.triggerWhipOrTraversal(this.combinedInput);

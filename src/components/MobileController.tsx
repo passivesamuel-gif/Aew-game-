@@ -17,6 +17,7 @@ interface MobileControllerProps {
   onRunChange: (held: boolean) => void;
   onAttack: () => void;
   onGrapple: () => void;
+  onSubmission: () => void;
   onWhip: () => void;
   onPin: () => void;
   onReverse: () => void;
@@ -115,6 +116,7 @@ export function MobileController({
   onRunChange,
   onAttack,
   onGrapple,
+  onSubmission,
   onWhip,
   onPin,
   onReverse,
@@ -180,12 +182,12 @@ export function MobileController({
     onJoystickMove(0, 0, false);
   };
 
-  if (wrestlerHud.matchPhase === 'pinning') {
+  if (wrestlerHud.matchPhase === 'pinning' || wrestlerHud.matchPhase === 'submitting') {
     return (
       <div className="pointer-events-none fixed inset-x-0 bottom-5 z-20 flex justify-center px-4 touch-none select-none">
         <ActionCircle
           label="Escape"
-          ariaLabel="Attempt Pin Escape"
+          ariaLabel={wrestlerHud.matchPhase === 'submitting' ? 'Attempt Submission Escape' : 'Attempt Pin Escape'}
           onTrigger={onPin}
           onUserGesture={onUserGesture}
           highlighted
@@ -327,6 +329,20 @@ export function MobileController({
             posClass="right-[76px] bottom-[140px]"
             sizeClass="h-[58px] w-[58px]"
             className="border-amber-200/80 bg-gradient-to-b from-amber-400 to-orange-600"
+            icon={<Hand className="h-5 w-5" />}
+          />
+        )}
+
+        {actions.submission.visible && (
+          <ActionCircle
+            label={actions.submission.label}
+            ariaLabel={actions.submission.label}
+            onTrigger={onSubmission}
+            onUserGesture={onUserGesture}
+            highlighted={actions.submission.highlighted}
+            posClass="right-[76px] bottom-[140px]"
+            sizeClass="h-[58px] w-[58px]"
+            className="border-fuchsia-200/85 bg-gradient-to-b from-fuchsia-500 to-purple-800"
             icon={<Hand className="h-5 w-5" />}
           />
         )}

@@ -32,6 +32,7 @@ const INITIAL_WRESTLER_HUD: WrestlerHudSnapshot = {
   actions: {
     attack: { visible: false, label: 'Strike' },
     grapple: { visible: false, label: 'Grapple' },
+    submission: { visible: false, label: 'Submit' },
     whip: { visible: false, label: 'Whip' },
     pin: { visible: false, label: 'Pin' },
     reverse: { visible: false, label: 'Reverse' },
@@ -99,6 +100,7 @@ export default function App() {
       const k = e.key.toLowerCase();
       if (k === 'j') engine.triggerAttack();
       else if (k === 'k') engine.triggerGrapple();
+      else if (k === 'b' || k === 'h') engine.triggerSubmission();
       else if (k === 'l' || k === 'e') engine.triggerWhipOrTraversal();
       else if (k === 'p') engine.triggerPin();
       else if (k === 'o') engine.triggerReverse();
@@ -192,6 +194,7 @@ export default function App() {
             onRunChange={(held) => engineRef.current?.setRunButtonHeld(held)}
             onAttack={() => engineRef.current?.triggerAttack()}
             onGrapple={() => engineRef.current?.triggerGrapple()}
+            onSubmission={() => engineRef.current?.triggerSubmission()}
             onWhip={() => engineRef.current?.triggerWhipOrTraversal()}
             onPin={() => engineRef.current?.triggerPin()}
             onReverse={() => engineRef.current?.triggerReverse()}

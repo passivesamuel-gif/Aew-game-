@@ -105,7 +105,8 @@ export class RefereeSystem {
   public update(dt: number, player: THREE.Vector3, rival: THREE.Vector3, phase: MatchPhase, pinCount: 0 | 1 | 2 | 3) {
     if (this.disposed) return;
     this.mixer?.update(dt);
-    this.group.visible = phase === 'active' || phase === 'pinning' || phase === 'finished';
+    this.group.visible =
+      phase === 'active' || phase === 'pinning' || phase === 'submitting' || phase === 'finished';
     if (!this.group.visible) return;
 
     const midpoint = new THREE.Vector3().addVectors(player, rival).multiplyScalar(0.5);
@@ -113,17 +114,24 @@ export class RefereeSystem {
     if (action.lengthSq() < 0.01) action.set(1, 0, 0);
     action.normalize();
     const side = new THREE.Vector3(-action.z, 0, action.x);
-    const offset = phase === 'pinning' ? 1.72 : 2.05;
+    const isOfficiatingHold = phase === 'pinning' || phase === 'submitting';
+    const offset = isOfficiatingHold ? 1.72 : phase === 'finished' ? 1.45 : 2.05;
     const target = new THREE.Vector3(
       THREE.MathUtils.clamp(midpoint.x + side.x * offset, -2.48, 2.48),
       RING_FLOOR_Y,
       THREE.MathUtils.clamp(midpoint.z + side.z * offset, -2.48, 2.48),
     );
     this.group.position.x = THREE.MathUtils.damp(this.group.position.x, target.x, 5.5, dt);
-    this.group.position.y = target.y;
+    const kneelOffset = isOfficiatingHold ? -0.28 : 0;
+    this.group.position.y = target.y + kneelOffset;
     this.group.position.z = THREE.MathUtils.damp(this.group.position.z, target.z, 5.5, dt);
     const yaw = Math.atan2(midpoint.x - this.group.position.x, midpoint.z - this.group.position.z);
     this.group.rotation.y = dampAngle(this.group.rotation.y, yaw, 7, dt);
+    // The supplied referee file does not advertise authored kneeling or hand-raise
+    // clips. Keep those moments procedural and conservative instead of mislabeling
+    // an idle clip as a custom officiating animation.
+    const targetLean = isOfficiatingHold ? -0.18 : phase === 'finished' ? 0.12 : 0;
+    this.group.rotation.z = THREE.MathUtils.damp(this.group.rotation.z, targetLean, 5, dt);
     if (pinCount > 0) this.countPulse = Math.max(this.countPulse, 0.18);
     this.countPulse = Math.max(0, this.countPulse - dt);
     this.group.scale.setScalar(1 + this.countPulse * 0.06);

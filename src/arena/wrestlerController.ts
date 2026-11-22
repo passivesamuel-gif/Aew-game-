@@ -31,6 +31,7 @@ export type MatchPhase =
   | 'entrance-player'
   | 'active'
   | 'pinning'
+  | 'submitting'
   | 'finished';
 
 export interface ContextualActionSpec {
@@ -61,6 +62,7 @@ export interface WrestlerHudSnapshot {
   actions: {
     attack: ContextualActionSpec;
     grapple: ContextualActionSpec;
+    submission: ContextualActionSpec;
     whip: ContextualActionSpec;
     pin: ContextualActionSpec;
     reverse: ContextualActionSpec;
@@ -247,6 +249,9 @@ export class WrestlerArenaController {
   private outsideCountElapsed = 0;
   private outsideCount = 0;
   private outsideCountActor: WrestlerActor | null = null;
+  private submissionElapsed = 0;
+  private submissionAttacker: WrestlerActor | null = null;
+  private submissionDefender: WrestlerActor | null = null;
 
   private lastMoveBanner: string | null = null;
   private moveBannerTimer = 0;
@@ -417,6 +422,9 @@ export class WrestlerArenaController {
     this.outsideCountElapsed = 0;
     this.outsideCount = 0;
     this.outsideCountActor = null;
+    this.submissionElapsed = 0;
+    this.submissionAttacker = null;
+    this.submissionDefender = null;
 
     this.resetActorForMatch(this.rival, new THREE.Vector3(0, 1.38, -20.1), 0, false);
     this.resetActorForMatch(this.player, new THREE.Vector3(0, 1.38, -20.3), 0, false);
@@ -641,6 +649,29 @@ export class WrestlerArenaController {
     }
   }
 
+  /** Starts a grounded submission from an existing grapple lock. */
+  public triggerSubmission() {
+    if (this.matchPhase !== 'active') return;
+    const attacker = this.player;
+    const defender = this.rival;
+    if (attacker.inGrappleWith !== defender || this.isActorBusy(attacker)) return;
+    if (defender.hp > 62) {
+      this.setMoveBanner('OPPONENT TOO FRESH FOR A SUBMISSION');
+      return;
+    }
+
+    this.breakGrappleIfAny(attacker, defender);
+    this.matchPhase = 'submitting';
+    this.submissionElapsed = 0;
+    this.submissionAttacker = attacker;
+    this.submissionDefender = defender;
+    attacker.state = 'grapple-lock';
+    defender.state = 'pin-trapped';
+    attacker.vel.set(0, 0, 0);
+    defender.vel.set(0, 0, 0);
+    this.setMoveBanner('SUBMISSION HOLD — ESCAPE!');
+  }
+
   public triggerWhipOrTraversal(input?: PlayerInputState) {
     if (this.matchPhase !== 'active') return;
     const p = this.player;
@@ -710,6 +741,10 @@ export class WrestlerArenaController {
   public triggerPin() {
     if (this.matchPhase === 'pinning') {
       this.tryPlayerKickout();
+      return;
+    }
+    if (this.matchPhase === 'submitting') {
+      this.tryPlayerSubmissionEscape();
       return;
     }
     if (this.matchPhase !== 'active') return;
@@ -1166,6 +1201,8 @@ export class WrestlerArenaController {
       this.stepEntranceChoreography(clampedDt);
     } else if (this.matchPhase === 'pinning') {
       this.stepPinningSequence(clampedDt);
+    } else if (this.matchPhase === 'submitting') {
+      this.stepSubmissionSequence(clampedDt);
     } else if (this.matchPhase === 'active') {
       this.stepOutsideCount(clampedDt);
       this.stepPlayerIntent(clampedDt, camera, input);
@@ -1348,6 +1385,68 @@ export class WrestlerArenaController {
       this.callbacks.onPyroBurst?.(atk.id === 'player' ? 'gold' : 'cobalt', 'corner');
       this.setMoveBanner(`WINNER: ${atk.displayName}`);
     }
+  }
+
+  private stepSubmissionSequence(dt: number) {
+    this.submissionElapsed += dt;
+    const attacker = this.submissionAttacker;
+    const defender = this.submissionDefender;
+    if (!attacker || !defender) {
+      this.matchPhase = 'active';
+      return;
+    }
+
+    attacker.state = 'grapple-lock';
+    defender.state = 'pin-trapped';
+    if (this.submissionElapsed >= 1.25 && this.submissionElapsed < 2.1) {
+      this.setMoveBanner('SUBMISSION WINDOW — PRESS P / ESCAPE');
+    }
+
+    // AI opponents get a fair escape chance while a critically weakened opponent taps out.
+    if (defender !== this.player && defender.hp > 28 && this.submissionElapsed >= 2.15) {
+      this.matchPhase = 'active';
+      defender.state = 'get-up';
+      defender.stateTimer = 0;
+      defender.phaseDuration = 0.58;
+      attacker.state = 'hit-stagger';
+      attacker.stateTimer = 0;
+      attacker.phaseDuration = 0.45;
+      this.setMoveBanner(`${defender.displayName} ESCAPES THE SUBMISSION!`);
+      this.submissionAttacker = null;
+      this.submissionDefender = null;
+      return;
+    }
+
+    if (this.submissionElapsed < 2.7) return;
+    this.matchPhase = 'finished';
+    this.winnerName = attacker.displayName;
+    attacker.state = 'victory-pose';
+    attacker.stateTimer = 0;
+    attacker.phaseDuration = 2.0;
+    defender.state = 'knockdown';
+    this.callbacks.onRingBell?.();
+    this.callbacks.onPyroBurst?.(attacker.id === 'player' ? 'gold' : 'cobalt', 'corner');
+    this.setMoveBanner(`SUBMISSION VICTORY: ${attacker.displayName}`);
+    this.submissionAttacker = null;
+    this.submissionDefender = null;
+  }
+
+  private tryPlayerSubmissionEscape() {
+    if (this.submissionDefender !== this.player) return;
+    if (this.submissionElapsed < 1.25 || this.submissionElapsed > 2.1) return;
+    const attacker = this.submissionAttacker;
+    if (!attacker) return;
+    this.matchPhase = 'active';
+    this.player.state = 'get-up';
+    this.player.stateTimer = 0;
+    this.player.phaseDuration = 0.58;
+    attacker.state = 'hit-stagger';
+    attacker.stateTimer = 0;
+    attacker.phaseDuration = 0.45;
+    this.player.momentum = Math.min(100, this.player.momentum + 14);
+    this.setMoveBanner(`${this.player.displayName} ESCAPES THE SUBMISSION!`);
+    this.submissionAttacker = null;
+    this.submissionDefender = null;
   }
 
   private stepOutsideCount(dt: number) {
@@ -2355,6 +2454,12 @@ export class WrestlerArenaController {
       (inGrapple ||
         (dist <= 1.95 && sameHeight && !this.isActorBusy(r) && r.perchedCornerIdx === null));
 
+    const canSubmit =
+      inActive &&
+      inGrapple &&
+      !busy &&
+      r.hp <= 62;
+
     const canWhipOrCross =
       inActive &&
       (perched ||
@@ -2425,8 +2530,13 @@ export class WrestlerArenaController {
           label: attackLabel,
         },
         grapple: {
-          visible: canGrapple,
+          visible: canGrapple && !canSubmit,
           label: inGrapple ? (p.grappleCursor % 3 === 2 ? 'Powerbomb' : p.grappleCursor % 3 === 1 ? 'Slam' : 'Suplex') : 'Grapple',
+        },
+        submission: {
+          visible: canSubmit || (this.matchPhase === 'submitting' && this.submissionDefender === p),
+          label: this.matchPhase === 'submitting' ? 'Escape' : 'Submit',
+          highlighted: canSubmit || (this.matchPhase === 'submitting' && this.submissionDefender === p),
         },
         whip: {
           visible: canWhipOrCross,

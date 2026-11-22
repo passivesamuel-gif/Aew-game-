@@ -25,7 +25,7 @@ export function BroadcastHUD({
   const isEntrance =
     wrestlerHud.matchPhase === 'entrance-rival' ||
     wrestlerHud.matchPhase === 'entrance-player';
-  const isPinning = wrestlerHud.matchPhase === 'pinning';
+  const isPinning = wrestlerHud.matchPhase === 'pinning' || wrestlerHud.matchPhase === 'submitting';
   const isFinished = wrestlerHud.matchPhase === 'finished';
 
   return (
@@ -139,6 +139,7 @@ export function BroadcastHUD({
             <span><kbd className="rounded border border-slate-600 px-1 text-amber-300">WASD</kbd> Move</span>
             <span><kbd className="rounded border border-slate-600 px-1 text-amber-300">J</kbd> Strike</span>
             <span><kbd className="rounded border border-slate-600 px-1 text-amber-300">K</kbd> Grapple</span>
+            <span><kbd className="rounded border border-slate-600 px-1 text-amber-300">B</kbd> Submit</span>
             <span><kbd className="rounded border border-slate-600 px-1 text-amber-300">O</kbd> Reverse</span>
             <span><kbd className="rounded border border-slate-600 px-1 text-amber-300">F</kbd> Finisher</span>
           </div>
