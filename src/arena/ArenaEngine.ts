@@ -78,6 +78,8 @@ export class ArenaEngine {
   private contextLost = false;
   private lightingMode: LightingMode = 'entrance';
   private hudSyncAccum = 0;
+  private paused = false;
+  private cameraView = 0;
 
   private joystickInput: PlayerInputState = {
     moveX: 0,
@@ -270,6 +272,11 @@ export class ArenaEngine {
         this.referee.setCount(count);
         this.emitHudImmediate();
       },
+      onWeaponUse: (attacker, defender) => {
+        const attackerPos = attacker === 'player' ? this.wrestlers.getPlayerPosition(_PLAYER_POS) : this.wrestlers.getRivalPosition(_PLAYER_POS);
+        const defenderPos = defender === 'player' ? this.wrestlers.getPlayerPosition(_RIVAL_POS) : this.wrestlers.getRivalPosition(_RIVAL_POS);
+        return this.referee.isWeaponWitnessing(attackerPos, defenderPos);
+      },
     }, false, playerName, rivalName, playerId, rivalId);
 
     this.scene.add(this.ring.group);
@@ -410,6 +417,15 @@ export class ArenaEngine {
     return this.wrestlers.getHudSnapshot();
   }
 
+  public togglePause() {
+    this.paused = !this.paused;
+    this.emitHudImmediate();
+  }
+
+  public cycleCameraView() {
+    this.cameraView = (this.cameraView + 1) % 3;
+  }
+
   private applyLightingMode(mode: LightingMode) {
     this.lightingMode = mode;
     this.leds.setLightingMode(mode);
@@ -506,18 +522,24 @@ export class ArenaEngine {
     const heightSpan = Math.abs(_PLAYER_POS.y - _RIVAL_POS.y);
 
     const isPinning = phase === 'pinning';
-    const baseZoom = isPinning ? 6.15 : 7.55 + sep * 0.62 + heightSpan * 0.4;
-    const zoomDist = THREE.MathUtils.clamp(baseZoom, 6.15, 14.5);
+    const actionX = _RIVAL_POS.x - _PLAYER_POS.x;
+    const actionZ = _RIVAL_POS.z - _PLAYER_POS.z;
+    const actionLen = Math.max(0.001, Math.hypot(actionX, actionZ));
+    const dirX = actionX / actionLen;
+    const dirZ = actionZ / actionLen;
+    const sideX = -dirZ;
+    const sideZ = dirX;
+    const orbit = this.cameraView === 1 ? -1 : 1;
+    const sideOffset = this.cameraView === 2 ? 5.6 : 7.8;
+    const behindOffset = this.cameraView === 2 ? -4.0 : -2.2;
+    const zoomDist = THREE.MathUtils.clamp((isPinning ? 6.4 : 7.8) + sep * 0.72 + heightSpan * 0.5, 6.2, 18.5);
+    const broadcastSway = Math.sin(this.clock.elapsedTime * 0.22) * 0.45;
 
-    this.targetLookAt.set(
-      THREE.MathUtils.clamp(_MID_POS.x * 0.9, -12, 12),
-      _MID_POS.y * 0.65 + 1.08,
-      THREE.MathUtils.clamp(_MID_POS.z * 0.9, -18, 12),
-    );
+    this.targetLookAt.set(_MID_POS.x, _MID_POS.y * 0.55 + 1.12, _MID_POS.z);
     this.targetCamPos.set(
-      THREE.MathUtils.clamp(_MID_POS.x * 0.76 + (isPinning ? 2.1 : 1.35), -14, 14),
-      _MID_POS.y * 0.5 + (isPinning ? 2.75 : 3.55) + sep * 0.14,
-      THREE.MathUtils.clamp(_MID_POS.z + zoomDist, -12, 19.5),
+      _MID_POS.x + sideX * sideOffset * orbit + dirX * behindOffset + broadcastSway * sideX,
+      Math.max(3.1, _MID_POS.y + (this.cameraView === 2 ? 5.2 : 3.8) + sep * 0.16),
+      _MID_POS.z + sideZ * sideOffset * orbit + dirZ * behindOffset + broadcastSway * sideZ + zoomDist,
     );
 
     const lambda = this.isSoftwareGl ? 12 : isPinning ? 6.5 : 5.2;
@@ -570,6 +592,14 @@ export class ArenaEngine {
   private handleKeyDown = (e: KeyboardEvent) => {
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
       return;
+    }
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      this.togglePause();
+      return;
+    }
+    if (e.key.toLowerCase() === 'v') {
+      this.cycleCameraView();
     }
     this.updateKeyboardBit(e.key, true);
     if (e.shiftKey) this.kbState.sprint = true;
@@ -693,7 +723,7 @@ export class ArenaEngine {
       const dt = Math.min(rawDt, 0.05);
       const elapsed = this.clock.elapsedTime;
 
-      if (!this.contextLost) {
+      if (!this.contextLost && !this.paused) {
         this.resolveCombinedInput();
         this.wrestlers.update(dt, this.camera, this.combinedInput);
         this.referee.update(

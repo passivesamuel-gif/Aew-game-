@@ -81,6 +81,7 @@ export interface MatchCallbacks {
   onEntranceStop?: () => void;
   onRingBell?: () => void;
   onRefCount?: (count: 1 | 2 | 3) => void;
+  onWeaponUse?: (attacker: 'player' | 'rival', defender: 'player' | 'rival') => boolean;
 }
 
 interface TraversalScript {
@@ -93,6 +94,8 @@ interface TraversalScript {
     | 'apron-step-up'
     | 'barricade-climb'
     | 'barricade-fall'
+    | 'barricade-top-mount'
+    | 'barricade-top-drop'
     | 'corner-climb'
     | 'corner-descend'
     | 'diving-attack'
@@ -163,6 +166,10 @@ interface WrestlerActor {
   nearBarricadeClosestX: number;
   nearBarricadeClosestZ: number;
   nearBarricadeSideSign: number;
+  onBarricadeTop: boolean;
+  barricadeTopSeg: BarricadeSegment | null;
+  barricadeTopT: number;
+  weaponHeld: boolean;
   whipTimer: number;
   lastImpactAt: number;
   strikeCursor: number;
@@ -232,6 +239,11 @@ export class WrestlerArenaController {
   public readonly group = new THREE.Group();
   public readonly navGrid = new ArenaNavGrid();
 
+  private readonly weaponRoot = new THREE.Group();
+  private readonly weaponPosition = new THREE.Vector3(-4.25, 0.34, 1.65);
+  private weaponAvailable = true;
+  private weaponCarrier: WrestlerActor | null = null;
+
   private readonly ropePhysics: RingRopePhysics;
   private readonly callbacks: MatchCallbacks;
   private readonly player: WrestlerActor;
@@ -268,6 +280,7 @@ export class WrestlerArenaController {
     this.ropePhysics = ropePhysics;
     this.callbacks = callbacks;
     this.group.name = 'ArenaWrestlers';
+    this.createPlaceholderWeapon();
 
     this.player = this.createActor(
       'player',
@@ -287,6 +300,7 @@ export class WrestlerArenaController {
 
     this.group.add(this.player.rig.root);
     this.group.add(this.rival.rig.root);
+    this.group.add(this.weaponRoot);
 
     if (startImmediatelyActive) {
       this.skipEntrance();
@@ -363,6 +377,10 @@ export class WrestlerArenaController {
       nearBarricadeClosestX: 0,
       nearBarricadeClosestZ: 0,
       nearBarricadeSideSign: 1,
+      onBarricadeTop: false,
+      barricadeTopSeg: null,
+      barricadeTopT: 0.5,
+      weaponHeld: false,
       whipTimer: 0,
       lastImpactAt: -10,
       strikeCursor: 0,
@@ -399,6 +417,10 @@ export class WrestlerArenaController {
     actor.grappleTimer = 0;
     actor.perchedCornerIdx = null;
     actor.nearCornerIdx = null;
+    actor.onBarricadeTop = false;
+    actor.barricadeTopSeg = null;
+    actor.barricadeTopT = 0.5;
+    actor.weaponHeld = false;
     actor.whipTimer = 0;
     actor.attackCooldown = 0;
     actor.reverseCooldown = 0;
@@ -407,6 +429,24 @@ export class WrestlerArenaController {
     actor.rig.root.visible = true;
     actor.rig.root.position.copy(actor.pos);
     actor.rig.root.rotation.y = actor.yaw;
+  }
+
+  private createPlaceholderWeapon() {
+    this.weaponRoot.name = 'Illegal-Weapon-Placeholder';
+    const handle = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.055, 0.07, 0.95, 8),
+      new THREE.MeshStandardMaterial({ color: 0x3b2416, roughness: 0.8 }),
+    );
+    handle.rotation.z = Math.PI * 0.5;
+    handle.castShadow = true;
+    const head = new THREE.Mesh(
+      new THREE.BoxGeometry(0.32, 0.16, 0.18),
+      new THREE.MeshStandardMaterial({ color: 0x8b95a5, metalness: 0.65, roughness: 0.32 }),
+    );
+    head.position.x = 0.52;
+    head.castShadow = true;
+    this.weaponRoot.add(handle, head);
+    this.weaponRoot.position.copy(this.weaponPosition);
   }
 
   /**
@@ -425,6 +465,9 @@ export class WrestlerArenaController {
     this.submissionElapsed = 0;
     this.submissionAttacker = null;
     this.submissionDefender = null;
+    this.weaponAvailable = true;
+    this.weaponCarrier = null;
+    this.weaponPosition.set(-4.25, 0.34, 1.65);
 
     this.resetActorForMatch(this.rival, new THREE.Vector3(0, 1.38, -20.1), 0, false);
     this.resetActorForMatch(this.player, new THREE.Vector3(0, 1.38, -20.3), 0, false);
@@ -451,6 +494,57 @@ export class WrestlerArenaController {
   private setMoveBanner(label: string) {
     this.lastMoveBanner = label;
     this.moveBannerTimer = 1.65;
+  }
+
+  private isPlayerNearWeapon(): boolean {
+    return this.weaponAvailable && this.player.pos.distanceTo(this.weaponPosition) < 1.45;
+  }
+
+  private pickupWeapon(actor: WrestlerActor) {
+    if (!this.weaponAvailable || actor.pos.distanceTo(this.weaponPosition) > 1.45) return false;
+    this.weaponAvailable = false;
+    this.weaponCarrier = actor;
+    actor.weaponHeld = true;
+    this.setMoveBanner('PICKED UP: ILLEGAL WEAPON');
+    return true;
+  }
+
+  private dropWeapon(actor: WrestlerActor) {
+    if (this.weaponCarrier !== actor) return;
+    actor.weaponHeld = false;
+    this.weaponCarrier = null;
+    this.weaponAvailable = true;
+    this.weaponPosition.set(actor.pos.x, 0.34, actor.pos.z);
+    this.setMoveBanner('DROPPED WEAPON');
+  }
+
+  private useWeapon(attacker: WrestlerActor, defender: WrestlerActor) {
+    if (this.weaponCarrier !== attacker || this.isActorBusy(attacker)) return;
+    const dist = attacker.pos.distanceTo(defender.pos);
+    if (dist > 2.45 || Math.abs(attacker.pos.y - defender.pos.y) > 0.9) {
+      this.setMoveBanner('WEAPON SWING MISSED');
+      return;
+    }
+    attacker.yaw = Math.atan2(defender.pos.x - attacker.pos.x, defender.pos.z - attacker.pos.z);
+    defender.hp = Math.max(0, defender.hp - 20);
+    defender.state = 'hit-stagger';
+    defender.stateTimer = 0;
+    defender.phaseDuration = 0.55;
+    defender.vel.set(Math.sin(attacker.yaw) * 3.2, 0, Math.cos(attacker.yaw) * 3.2);
+    attacker.state = 'strike-elbow';
+    attacker.stateTimer = 0;
+    attacker.phaseDuration = 0.52;
+    attacker.attackCooldown = 0.7;
+    attacker.momentum = THREE.MathUtils.clamp(attacker.momentum + 12, 0, 100);
+    this.callbacks.onImpactSound?.(true);
+    this.setMoveBanner('ILLEGAL WEAPON SHOT');
+    const witnessed = this.callbacks.onWeaponUse?.(attacker.id, defender.id) ?? false;
+    if (witnessed) {
+      this.matchPhase = 'finished';
+      this.winnerName = defender.displayName;
+      this.setMoveBanner(`DISQUALIFICATION — ${attacker.displayName}`);
+      this.dropWeapon(attacker);
+    }
   }
 
   public getMatchPhase(): MatchPhase {
@@ -522,6 +616,11 @@ export class WrestlerArenaController {
     if (this.matchPhase !== 'active') return;
     const p = this.player;
     const r = this.rival;
+
+    if (p.weaponHeld) {
+      this.useWeapon(p, r);
+      return;
+    }
 
     // 1. If perched on top turnbuckle -> ATTACK also triggers Aerial Dive!
     if (p.perchedCornerIdx !== null) {
@@ -677,7 +776,22 @@ export class WrestlerArenaController {
     const p = this.player;
     const r = this.rival;
 
-    // 1. Perched on turnbuckle -> climb safely back down to mat
+    if (p.weaponHeld) {
+      this.dropWeapon(p);
+      return;
+    }
+    if (this.isPlayerNearWeapon() && !this.isActorBusy(p)) {
+      this.pickupWeapon(p);
+      return;
+    }
+
+    // 1. Barricade top -> jump back to ringside
+    if (p.onBarricadeTop && p.barricadeTopSeg) {
+      this.startBarricadeTopDrop(p, p.barricadeTopSeg);
+      return;
+    }
+
+    // 2. Perched on turnbuckle -> climb safely back down to mat
     if (p.perchedCornerIdx !== null) {
       this.descendFromTurnbuckle(p);
       return;
@@ -698,17 +812,14 @@ export class WrestlerArenaController {
       return;
     }
 
-    // 3. Touching barricade -> climb/vault over!
+    // 4. Touching barricade -> mount the top; sprinting retains the existing vault
     if (p.nearBarricadeSeg) {
       const speed = Math.hypot(p.vel.x, p.vel.z);
-      this.startBarricadeTraversal(
-        p,
-        p.nearBarricadeSeg,
-        p.nearBarricadeClosestX,
-        p.nearBarricadeClosestZ,
-        p.nearBarricadeSideSign,
-        speed > 4.6,
-      );
+      if (speed > 4.6) {
+        this.startBarricadeTraversal(p, p.nearBarricadeSeg, p.nearBarricadeClosestX, p.nearBarricadeClosestZ, p.nearBarricadeSideSign, true);
+      } else {
+        this.startBarricadeTopMount(p, p.nearBarricadeSeg, p.nearBarricadeClosestX, p.nearBarricadeClosestZ, p.nearBarricadeSideSign);
+      }
       return;
     }
 
@@ -842,6 +953,12 @@ export class WrestlerArenaController {
     if (this.matchPhase !== 'active') return;
     const p = this.player;
     const r = this.rival;
+
+    if (p.onBarricadeTop && p.barricadeTopSeg && !this.isActorBusy(p)) {
+      this.launchSpringboardDive(p, r);
+      this.setMoveBanner('BARRICADE-TOP FLYING ATTACK!');
+      return;
+    }
 
     // 1. Perched on top turnbuckle -> Launch soaring aerial attack toward opponent!
     if (p.perchedCornerIdx !== null) {
@@ -1132,6 +1249,8 @@ export class WrestlerArenaController {
     const endPos = new THREE.Vector3(landX, landSurf.y, landZ);
     const dum = new THREE.Vector3();
     resolveArenaCollisions(endPos, dum, attacker.radius);
+    attacker.onBarricadeTop = false;
+    attacker.barricadeTopSeg = null;
 
     attacker.state = 'springboard-attack';
     attacker.stateTimer = 0;
@@ -1229,6 +1348,18 @@ export class WrestlerArenaController {
       a.rig.updateAnimation(a.state, clampedDt, phaseRatio, speed / 5.8);
       a.rig.root.position.copy(a.pos);
       a.rig.root.rotation.y = a.yaw;
+    }
+    this.weaponRoot.visible = this.weaponAvailable || this.weaponCarrier !== null;
+    if (this.weaponCarrier) {
+      this.weaponRoot.position.set(
+        this.weaponCarrier.pos.x + Math.sin(this.weaponCarrier.yaw) * 0.38,
+        this.weaponCarrier.pos.y + 1.05,
+        this.weaponCarrier.pos.z + Math.cos(this.weaponCarrier.yaw) * 0.38,
+      );
+      this.weaponRoot.rotation.y = this.weaponCarrier.yaw;
+    } else {
+      this.weaponRoot.position.copy(this.weaponPosition);
+      this.weaponRoot.rotation.y = 0.35;
     }
   }
 
@@ -1586,6 +1717,15 @@ export class WrestlerArenaController {
       return;
     }
 
+    if (this.weaponCarrier === r) {
+      if (r.attackCooldown <= 0 && r.pos.distanceTo(p.pos) < 2.45) this.useWeapon(r, p);
+      return;
+    }
+    if (this.weaponAvailable && r.pos.distanceTo(this.weaponPosition) < 1.45 && r.hp < 78) {
+      this.pickupWeapon(r);
+      return;
+    }
+
     const dx = p.pos.x - r.pos.x;
     const dz = p.pos.z - r.pos.z;
     const dist = Math.hypot(dx, dz);
@@ -1836,6 +1976,21 @@ export class WrestlerArenaController {
 
   private stepActorPhysics(actor: WrestlerActor, dt: number) {
     if (actor.whipTimer > 0) actor.whipTimer = Math.max(0, actor.whipTimer - dt);
+
+    if (actor.onBarricadeTop && actor.barricadeTopSeg && !actor.script) {
+      const seg = actor.barricadeTopSeg;
+      const tx = (seg.x2 - seg.x1) / seg.length;
+      const tz = (seg.z2 - seg.z1) / seg.length;
+      const speed = actor.vel.x * tx + actor.vel.z * tz;
+      actor.barricadeTopT = THREE.MathUtils.clamp(actor.barricadeTopT + (speed * dt) / seg.length, 0.05, 0.95);
+      actor.pos.x = THREE.MathUtils.lerp(seg.x1, seg.x2, actor.barricadeTopT);
+      actor.pos.z = THREE.MathUtils.lerp(seg.z1, seg.z2, actor.barricadeTopT);
+      actor.pos.y = seg.height + 0.16;
+      actor.vel.set(tx * speed, 0, tz * speed);
+      actor.yaw = dampYaw(actor.yaw, Math.atan2(tx, tz), 12, dt);
+      actor.state = Math.abs(speed) > 0.2 ? 'walk' : 'barricade-lean';
+      return;
+    }
 
     // Held on top turnbuckle perch
     if (actor.perchedCornerIdx !== null && !actor.script) {
@@ -2235,6 +2390,41 @@ export class WrestlerArenaController {
     };
   }
 
+  private startBarricadeTopMount(
+    actor: WrestlerActor,
+    seg: BarricadeSegment,
+    closestX: number,
+    closestZ: number,
+    sideSign: number,
+  ) {
+    actor.vel.set(0, 0, 0);
+    actor.state = 'barricade-climb';
+    actor.stateTimer = 0;
+    actor.phaseDuration = 0.48;
+    actor.script = {
+      kind: 'barricade-top-mount', elapsed: 0, duration: 0.48,
+      startPos: actor.pos.clone(), endPos: new THREE.Vector3(closestX, seg.height + 0.16, closestZ),
+      startYaw: actor.yaw, endYaw: Math.atan2(-seg.outX * sideSign, -seg.outZ * sideSign),
+      side: 0, t: 0.5, outX: seg.outX, outZ: seg.outZ, barricade: seg,
+    };
+    this.setMoveBanner('MOUNTED BARRICADE');
+  }
+
+  private startBarricadeTopDrop(actor: WrestlerActor, seg: BarricadeSegment) {
+    const x = actor.pos.x + seg.outX * 0.75;
+    const z = actor.pos.z + seg.outZ * 0.75;
+    actor.vel.set(0, 0, 0);
+    actor.state = 'barricade-fall';
+    actor.stateTimer = 0;
+    actor.phaseDuration = 0.44;
+    actor.script = {
+      kind: 'barricade-top-drop', elapsed: 0, duration: 0.44,
+      startPos: actor.pos.clone(), endPos: new THREE.Vector3(x, sampleArenaSurface(x, z, 0.1).y, z),
+      startYaw: actor.yaw, endYaw: Math.atan2(seg.outX, seg.outZ),
+      side: 0, t: 0.5, outX: seg.outX, outZ: seg.outZ, barricade: seg,
+    };
+  }
+
   private stepTraversalScript(actor: WrestlerActor, sc: TraversalScript, dt: number) {
     sc.elapsed += dt;
     const rawP = THREE.MathUtils.clamp(sc.elapsed / sc.duration, 0, 1);
@@ -2291,6 +2481,9 @@ export class WrestlerArenaController {
       const baseLine = THREE.MathUtils.lerp(sc.startPos.y, sc.endPos.y, p);
       const arch = sc.kind === 'barricade-fall' ? 0.58 : 0.72;
       actor.pos.y = baseLine + Math.sin(rawP * Math.PI) * arch;
+    } else if (sc.kind === 'barricade-top-mount' || sc.kind === 'barricade-top-drop') {
+      const baseLine = THREE.MathUtils.lerp(sc.startPos.y, sc.endPos.y, p);
+      actor.pos.y = baseLine + Math.sin(rawP * Math.PI) * (sc.kind === 'barricade-top-mount' ? 0.22 : 0.16);
     }
 
     if (rawP >= 1) {
@@ -2300,6 +2493,8 @@ export class WrestlerArenaController {
       const portal = findNearestRopePortal(actor.pos.x, actor.pos.z);
       const wasDive = sc.kind === 'diving-attack' || sc.kind === 'springboard-attack';
       const enteredRing = sc.kind === 'enter-between' || sc.kind === 'enter-slide';
+      const mountedBarricade = sc.kind === 'barricade-top-mount';
+      const droppedBarricade = sc.kind === 'barricade-top-drop';
       actor.script = null;
 
       if (enteredRing) {
@@ -2328,6 +2523,18 @@ export class WrestlerArenaController {
         actor.state = 'get-up';
         actor.stateTimer = 0;
         actor.phaseDuration = 0.45;
+      } else if (mountedBarricade && sc.barricade) {
+        actor.onBarricadeTop = true;
+        actor.barricadeTopSeg = sc.barricade;
+        actor.barricadeTopT = THREE.MathUtils.clamp(
+          ((actor.pos.x - sc.barricade.x1) * (sc.barricade.x2 - sc.barricade.x1) + (actor.pos.z - sc.barricade.z1) * (sc.barricade.z2 - sc.barricade.z1)) / (sc.barricade.length * sc.barricade.length),
+          0.05, 0.95,
+        );
+        actor.state = 'barricade-lean';
+      } else if (droppedBarricade) {
+        actor.onBarricadeTop = false;
+        actor.barricadeTopSeg = null;
+        actor.state = 'idle';
       } else {
         actor.state = 'idle';
         actor.stateTimer = 0;
@@ -2464,7 +2671,7 @@ export class WrestlerArenaController {
       inActive &&
       (perched ||
         inGrapple ||
-        (!busy && (p.nearBarricadeSeg !== null || p.nearRopeSide !== null)));
+        (!busy && (p.nearBarricadeSeg !== null || p.nearRopeSide !== null || this.isPlayerNearWeapon() || p.weaponHeld || p.onBarricadeTop)));
 
     const canFinisher =
       inActive &&
@@ -2479,13 +2686,17 @@ export class WrestlerArenaController {
     const speed = Math.hypot(p.vel.x, p.vel.z);
 
     let attackLabel = 'Strike';
-    if (perched) attackLabel = 'Dive';
+    if (p.weaponHeld) attackLabel = 'Weapon Swing';
+    else if (perched || p.onBarricadeTop) attackLabel = 'Dive';
     else if (inGrapple) attackLabel = 'DDT';
     else if (r.state === 'knockdown' && dist < 2.1 && sameHeight) attackLabel = 'Stomp';
     else if (speed > 4.0) attackLabel = 'Lariat';
 
     let whipLabel = 'Whip';
-    if (perched) whipLabel = 'Step Down';
+    if (p.weaponHeld) whipLabel = 'Drop Weapon';
+    else if (this.isPlayerNearWeapon()) whipLabel = 'Pick Up Weapon';
+    else if (p.onBarricadeTop) whipLabel = 'Jump Down';
+    else if (perched) whipLabel = 'Step Down';
     else if (inGrapple) whipLabel = 'Whip';
     else if (p.nearBarricadeSeg) whipLabel = 'Vault';
     else if (this.isActorInRing(p)) whipLabel = 'Exit Ring';
@@ -2526,7 +2737,7 @@ export class WrestlerArenaController {
       lastMoveBanner: this.lastMoveBanner,
       actions: {
         attack: {
-          visible: inActive && (!busy || perched),
+          visible: inActive && (!busy || perched || p.onBarricadeTop || p.weaponHeld),
           label: attackLabel,
         },
         grapple: {
@@ -2557,7 +2768,7 @@ export class WrestlerArenaController {
           label: 'Climb',
         },
         dive: {
-          visible: canDive,
+          visible: canDive || (inActive && p.onBarricadeTop && !busy),
           label: 'Dive',
           highlighted: canDive,
         },

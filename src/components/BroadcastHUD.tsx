@@ -142,6 +142,8 @@ export function BroadcastHUD({
             <span><kbd className="rounded border border-slate-600 px-1 text-amber-300">B</kbd> Submit</span>
             <span><kbd className="rounded border border-slate-600 px-1 text-amber-300">O</kbd> Reverse</span>
             <span><kbd className="rounded border border-slate-600 px-1 text-amber-300">F</kbd> Finisher</span>
+            <span><kbd className="rounded border border-slate-600 px-1 text-amber-300">V</kbd> Camera</span>
+            <span><kbd className="rounded border border-slate-600 px-1 text-amber-300">Esc</kbd> Pause</span>
           </div>
         </div>
       )}

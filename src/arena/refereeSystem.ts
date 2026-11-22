@@ -19,11 +19,15 @@ export class RefereeSystem {
   private mixer: THREE.AnimationMixer | null = null;
   private disposed = false;
   private countPulse = 0;
+  private officiatingElapsed = 0;
+  private readonly gestureRoot = new THREE.Group();
 
   constructor() {
     this.group.name = 'MatchReferee';
     this.fallback = this.createFallback();
     this.group.add(this.fallback);
+    this.createGestureOverlay();
+    this.group.add(this.gestureRoot);
     this.group.visible = false;
     void this.loadModel();
   }
@@ -68,6 +72,18 @@ export class RefereeSystem {
     return root;
   }
 
+  private createGestureOverlay() {
+    this.gestureRoot.name = 'ProceduralOfficiatingGestures';
+    const glove = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.6 });
+    for (const x of [-0.22, 0.22]) {
+      const arm = new THREE.Mesh(new THREE.CapsuleGeometry(0.045, 0.34, 4, 8), glove);
+      arm.position.set(x, 0.9, 0.18);
+      arm.rotation.z = x < 0 ? -0.35 : 0.35;
+      arm.castShadow = true;
+      this.gestureRoot.add(arm);
+    }
+  }
+
   private async loadModel() {
     try {
       const gltf = await new GLTFLoader().loadAsync(REFEREE_ASSET_MANIFEST.assetPath);
@@ -108,6 +124,7 @@ export class RefereeSystem {
     this.group.visible =
       phase === 'active' || phase === 'pinning' || phase === 'submitting' || phase === 'finished';
     if (!this.group.visible) return;
+    this.officiatingElapsed += dt;
 
     const midpoint = new THREE.Vector3().addVectors(player, rival).multiplyScalar(0.5);
     const action = new THREE.Vector3().subVectors(rival, player);
@@ -132,6 +149,21 @@ export class RefereeSystem {
     // an idle clip as a custom officiating animation.
     const targetLean = isOfficiatingHold ? -0.18 : phase === 'finished' ? 0.12 : 0;
     this.group.rotation.z = THREE.MathUtils.damp(this.group.rotation.z, targetLean, 5, dt);
+    const leftArm = this.gestureRoot.children[0];
+    const rightArm = this.gestureRoot.children[1];
+    if (leftArm && rightArm) {
+      if (phase === 'pinning') {
+        leftArm.position.y = 0.9 - (pinCount > 0 ? Math.max(0, Math.sin(this.officiatingElapsed * 18)) * 0.55 : 0);
+        rightArm.position.y = 0.92;
+      } else if (phase === 'submitting') {
+        leftArm.position.y = 1.18 + Math.sin(this.officiatingElapsed * 7) * 0.08;
+        rightArm.position.y = 0.88;
+        leftArm.rotation.z = -0.08;
+      } else {
+        leftArm.position.y = 0.9;
+        rightArm.position.y = 0.9;
+      }
+    }
     if (pinCount > 0) this.countPulse = Math.max(this.countPulse, 0.18);
     this.countPulse = Math.max(0, this.countPulse - dt);
     this.group.scale.setScalar(1 + this.countPulse * 0.06);
@@ -139,6 +171,12 @@ export class RefereeSystem {
 
   public setCount(count: 1 | 2 | 3) {
     if (count > 0) this.countPulse = 0.24;
+  }
+
+  public isWeaponWitnessing(attacker: THREE.Vector3, defender: THREE.Vector3): boolean {
+    if (!this.group.visible) return false;
+    const midpoint = new THREE.Vector3().addVectors(attacker, defender).multiplyScalar(0.5);
+    return this.group.position.distanceTo(midpoint) < 5.5 && Math.abs(attacker.y - this.group.position.y) < 2.2;
   }
 
   public dispose() {
