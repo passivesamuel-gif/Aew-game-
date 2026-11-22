@@ -8,9 +8,12 @@ import { ArenaEngine } from './arena/ArenaEngine';
 import type { WrestlerHudSnapshot } from './arena/wrestlerController';
 import { BroadcastHUD } from './components/BroadcastHUD';
 import { MobileController } from './components/MobileController';
+import { WRESTLER_ASSET_MANIFEST, type WrestlerId } from './assets/assetManifest';
 
 const INITIAL_WRESTLER_HUD: WrestlerHudSnapshot = {
   matchPhase: 'entrance-rival',
+  playerName: 'MJF',
+  rivalName: 'WILL OSPREAY',
   entranceName: 'VORTEX',
   entranceSubtitle: 'THE BLUEPRINT · CHALLENGING TONIGHT',
   pinCount: 0,
@@ -47,6 +50,8 @@ export default function App() {
   const [audioEnabled, setAudioEnabled] = useState(false);
   const [contextLost, setContextLost] = useState(false);
   const [wrestlerHud, setWrestlerHud] = useState<WrestlerHudSnapshot>(INITIAL_WRESTLER_HUD);
+  const [selectedWrestler, setSelectedWrestler] = useState<WrestlerId>('MJF');
+  const [matchStarted, setMatchStarted] = useState(false);
 
   useEffect(() => {
     const container = canvasMountRef.current;
@@ -136,6 +141,15 @@ export default function App() {
     engineRef.current?.restartMatch();
   };
 
+  const handleStartMatch = () => {
+    const player = WRESTLER_ASSET_MANIFEST[selectedWrestler];
+    const rival = WRESTLER_ASSET_MANIFEST[selectedWrestler === 'MJF' ? 'Ospreay' : 'MJF'];
+    ensureAudioOnGesture();
+    engineRef.current?.setWrestlerIdentities(player.displayName, rival.displayName, player.id, rival.id);
+    engineRef.current?.restartMatch();
+    setMatchStarted(true);
+  };
+
   return (
     <main
       className="relative h-screen w-screen overflow-hidden bg-[#05070c] touch-none select-none"
@@ -161,28 +175,62 @@ export default function App() {
         </div>
       )}
 
-      <BroadcastHUD
-        audioEnabled={audioEnabled}
-        wrestlerHud={wrestlerHud}
-        onToggleAudio={handleToggleAudio}
-        onSkipEntrance={handleSkipEntrance}
-        onRematch={handleRematch}
-      />
+      {matchStarted && (
+        <>
+          <BroadcastHUD
+            audioEnabled={audioEnabled}
+            wrestlerHud={wrestlerHud}
+            onToggleAudio={handleToggleAudio}
+            onSkipEntrance={handleSkipEntrance}
+            onRematch={handleRematch}
+          />
 
-      <MobileController
-        wrestlerHud={wrestlerHud}
-        onJoystickMove={(x, z, sprint) => engineRef.current?.setJoystickInput(x, z, sprint)}
-        onRunChange={(held) => engineRef.current?.setRunButtonHeld(held)}
-        onAttack={() => engineRef.current?.triggerAttack()}
-        onGrapple={() => engineRef.current?.triggerGrapple()}
-        onWhip={() => engineRef.current?.triggerWhipOrTraversal()}
-        onPin={() => engineRef.current?.triggerPin()}
-        onReverse={() => engineRef.current?.triggerReverse()}
-        onClimb={() => engineRef.current?.triggerClimbCorner()}
-        onDive={() => engineRef.current?.triggerDive()}
-        onFinisher={() => engineRef.current?.triggerFinisher()}
-        onUserGesture={ensureAudioOnGesture}
-      />
+          <MobileController
+            wrestlerHud={wrestlerHud}
+            onJoystickMove={(x, z, sprint) => engineRef.current?.setJoystickInput(x, z, sprint)}
+            onRunChange={(held) => engineRef.current?.setRunButtonHeld(held)}
+            onAttack={() => engineRef.current?.triggerAttack()}
+            onGrapple={() => engineRef.current?.triggerGrapple()}
+            onWhip={() => engineRef.current?.triggerWhipOrTraversal()}
+            onPin={() => engineRef.current?.triggerPin()}
+            onReverse={() => engineRef.current?.triggerReverse()}
+            onClimb={() => engineRef.current?.triggerClimbCorner()}
+            onDive={() => engineRef.current?.triggerDive()}
+            onFinisher={() => engineRef.current?.triggerFinisher()}
+            onUserGesture={ensureAudioOnGesture}
+          />
+        </>
+      )}
+
+      {!matchStarted && (
+        <section className="pointer-events-auto fixed inset-0 z-20 flex items-center justify-center bg-[#05070c]/72 p-5 backdrop-blur-[2px]">
+          <div className="w-full max-w-2xl rounded-2xl border border-slate-700/80 bg-[#0b0f19]/95 p-6 shadow-2xl sm:p-8">
+            <p className="font-broadcast text-xs font-bold tracking-[0.3em] text-amber-300 uppercase">Apex Prime · Match Setup</p>
+            <h1 className="mt-2 font-broadcast text-4xl font-black tracking-wider text-white uppercase sm:text-5xl">Choose your wrestler</h1>
+            <p className="mt-2 max-w-lg text-sm text-slate-400">Select an identity for the challenger. Existing arena and controller systems stay in place while the chosen name carries into entrances and HUD.</p>
+            <div className="mt-6 grid gap-3 sm:grid-cols-2">
+              {(Object.keys(WRESTLER_ASSET_MANIFEST) as WrestlerId[]).map((id) => {
+                const wrestler = WRESTLER_ASSET_MANIFEST[id];
+                const selected = selectedWrestler === id;
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => setSelectedWrestler(id)}
+                    className={`rounded-xl border p-4 text-left transition ${selected ? 'border-amber-300 bg-amber-300/10 shadow-[0_0_24px_rgba(251,191,36,0.14)]' : 'border-slate-700 bg-slate-900/60 hover:border-slate-500'}`}
+                  >
+                    <span className="text-xs font-bold tracking-[0.18em] text-slate-500 uppercase">{selected ? 'Selected' : 'Challenger'}</span>
+                    <span className="mt-1 block font-broadcast text-2xl font-black tracking-wider text-white uppercase">{wrestler.displayName}</span>
+                    <span className="mt-2 block text-xs text-slate-400">Asset manifest: {wrestler.assetPath}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <button type="button" onClick={handleStartMatch} className="mt-6 h-12 w-full rounded-lg bg-amber-400 px-5 font-broadcast text-sm font-black tracking-[0.18em] text-slate-950 uppercase transition hover:bg-amber-300 active:scale-[0.99]">Enter the arena</button>
+            <p className="mt-3 text-center text-[11px] text-slate-500">Supplied GLB visuals load in the background; if a file fails, the existing procedural rig remains active.</p>
+          </div>
+        </section>
+      )}
     </main>
   );
 }

@@ -15,6 +15,7 @@ import { ArenaPyroSystem } from './pyroEffects';
 import { AnimatedLedManager } from './textures';
 import { SHOW_THEMES } from './themes';
 import type { LightingMode, ShowThemeId } from './types';
+import type { WrestlerId } from '../assets/assetManifest';
 import {
   WrestlerArenaController,
   type PlayerInputState,
@@ -121,6 +122,10 @@ export class ArenaEngine {
     initialThemeId: ShowThemeId = 'apex-prime',
     onContextLost?: (lost: boolean) => void,
     onHudUpdate?: (snapshot: WrestlerHudSnapshot) => void,
+    playerName = 'MJF',
+    rivalName = 'Will Ospreay',
+    playerId: WrestlerId = 'MJF',
+    rivalId: WrestlerId = 'Ospreay',
   ) {
     this.container = container;
     this.onContextLostCb = onContextLost;
@@ -261,7 +266,7 @@ export class ArenaEngine {
         this.audio.playRefCount(count);
         this.emitHudImmediate();
       },
-    });
+    }, false, playerName, rivalName, playerId, rivalId);
 
     this.scene.add(this.ring.group);
     this.scene.add(this.stage.group);
@@ -378,6 +383,16 @@ export class ArenaEngine {
     this.camera.position.set(4.2, 4.1, -11.5);
     this.camLookAt.set(0, 1.85, -18.5);
     this.camera.lookAt(this.camLookAt);
+    this.emitHudImmediate();
+  }
+
+  public setWrestlerIdentities(
+    playerName: string,
+    rivalName: string,
+    playerId: WrestlerId = 'MJF',
+    rivalId: WrestlerId = 'Ospreay',
+  ) {
+    this.wrestlers.setWrestlerIdentities(playerName, rivalName, playerId, rivalId);
     this.emitHudImmediate();
   }
 

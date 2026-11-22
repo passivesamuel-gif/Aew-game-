@@ -12,11 +12,12 @@ import {
 import type { PyroStyle } from './pyroEffects';
 import type { RingRopePhysics } from './ropePhysics';
 import {
-  createWrestlerRig,
   WRESTLER_PRESETS,
   type WrestlerAnimState,
   type WrestlerRig,
 } from './wrestlerModel';
+import { createAnimatedWrestlerRig } from './animatedWrestlerRig';
+import type { WrestlerId } from '../assets/assetManifest';
 
 export interface PlayerInputState {
   /** Normalized 360-degree analog vector in screen/camera space (-1..1) */
@@ -40,6 +41,8 @@ export interface ContextualActionSpec {
 
 export interface WrestlerHudSnapshot {
   matchPhase: MatchPhase;
+  playerName: string;
+  rivalName: string;
   entranceName: string | null;
   entranceSubtitle: string | null;
   pinCount: 0 | 1 | 2 | 3;
@@ -248,6 +251,10 @@ export class WrestlerArenaController {
     ropePhysics: RingRopePhysics,
     callbacks: MatchCallbacks = {},
     startImmediatelyActive = false,
+    playerName = WRESTLER_PRESETS.player.name,
+    rivalName = WRESTLER_PRESETS.rival.name,
+    playerId: WrestlerId = 'MJF',
+    rivalId: WrestlerId = 'Ospreay',
   ) {
     this.ropePhysics = ropePhysics;
     this.callbacks = callbacks;
@@ -255,15 +262,17 @@ export class WrestlerArenaController {
 
     this.player = this.createActor(
       'player',
-      WRESTLER_PRESETS.player.name.toUpperCase(),
+      playerName.toUpperCase(),
       new THREE.Vector3(-1.2, 1.062, 0.25),
       Math.PI * 0.5,
+      playerId,
     );
     this.rival = this.createActor(
       'rival',
-      WRESTLER_PRESETS.rival.name.toUpperCase(),
+      rivalName.toUpperCase(),
       new THREE.Vector3(1.2, 1.062, -0.25),
       -Math.PI * 0.5,
+      rivalId,
     );
     this.actors = [this.player, this.rival];
 
@@ -277,13 +286,43 @@ export class WrestlerArenaController {
     }
   }
 
+  public setWrestlerIdentities(
+    playerName: string,
+    rivalName: string,
+    playerId: WrestlerId = this.player.rig instanceof Object && 'wrestlerId' in this.player.rig ? (this.player.rig as { wrestlerId: WrestlerId }).wrestlerId : 'MJF',
+    rivalId: WrestlerId = this.rival.rig instanceof Object && 'wrestlerId' in this.rival.rig ? (this.rival.rig as { wrestlerId: WrestlerId }).wrestlerId : 'Ospreay',
+  ) {
+    this.player.displayName = playerName.toUpperCase();
+    this.rival.displayName = rivalName.toUpperCase();
+    this.swapActorVisual(this.player, playerId);
+    this.swapActorVisual(this.rival, rivalId);
+  }
+
+  private swapActorVisual(actor: WrestlerActor, id: WrestlerId) {
+    const current = actor.rig as WrestlerRig & { wrestlerId?: WrestlerId };
+    if (current.wrestlerId === id) return;
+    const previous = actor.rig;
+    const next = createAnimatedWrestlerRig(id, (status, message) => {
+      if (status === 'fallback') console.warn(message);
+    });
+    next.root.position.copy(actor.pos);
+    next.root.rotation.y = actor.yaw;
+    this.group.add(next.root);
+    actor.rig = next;
+    this.group.remove(previous.root);
+    previous.dispose();
+  }
+
   private createActor(
     id: 'player' | 'rival',
     displayName: string,
     startPos: THREE.Vector3,
     yaw: number,
+    assetId: WrestlerId,
   ): WrestlerActor {
-    const rig = createWrestlerRig(WRESTLER_PRESETS[id]);
+    const rig = createAnimatedWrestlerRig(assetId, (status, message) => {
+      if (status === 'fallback') console.warn(message);
+    });
     rig.root.position.copy(startPos);
     rig.root.rotation.y = yaw;
     return {
@@ -1114,6 +1153,7 @@ export class WrestlerArenaController {
       const a = this.actors[i];
       const speed = Math.hypot(a.vel.x, a.vel.z);
       const phaseRatio = a.phaseDuration > 0 ? a.stateTimer / a.phaseDuration : 0;
+      a.rig.setMoveRole?.(a.move?.role ?? null);
       a.rig.updateAnimation(a.state, clampedDt, phaseRatio, speed / 5.8);
       a.rig.root.position.copy(a.pos);
       a.rig.root.rotation.y = a.yaw;
@@ -2267,6 +2307,8 @@ export class WrestlerArenaController {
 
     return {
       matchPhase: this.matchPhase,
+      playerName: p.displayName,
+      rivalName: r.displayName,
       entranceName,
       entranceSubtitle,
       pinCount: this.pinCount,

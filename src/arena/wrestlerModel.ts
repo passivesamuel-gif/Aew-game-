@@ -99,6 +99,7 @@ export interface WrestlerRig {
     phaseTime: number,
     moveSpeedRatio: number,
   ) => void;
+  setMoveRole?: (role: 'attacker' | 'victim' | null) => void;
   dispose: () => void;
 }
 

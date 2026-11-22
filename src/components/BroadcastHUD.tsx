@@ -36,7 +36,7 @@ export function BroadcastHUD({
         <div className="w-[42%] max-w-[300px] rounded-lg border border-slate-700/75 bg-[#0b0f19]/85 px-2.5 py-2 shadow-xl">
           <div className="flex items-baseline justify-between gap-2">
             <span className="font-broadcast text-xs sm:text-sm font-bold tracking-wider text-amber-300 uppercase whitespace-nowrap">
-              Challenger
+              {wrestlerHud.playerName}
             </span>
             <span className="text-[11px] font-semibold tabular-nums text-slate-200 whitespace-nowrap">
               {wrestlerHud.playerHp}%
@@ -94,7 +94,7 @@ export function BroadcastHUD({
               {wrestlerHud.rivalHp}%
             </span>
             <span className="font-broadcast text-xs sm:text-sm font-bold tracking-wider text-sky-300 uppercase whitespace-nowrap">
-              Vortex
+              {wrestlerHud.rivalName}
             </span>
           </div>
           <div className="mt-1 h-2 w-full overflow-hidden rounded-sm bg-slate-800">
@@ -122,6 +122,19 @@ export function BroadcastHUD({
         <div className="pointer-events-none absolute top-[76px] sm:top-[84px] left-1/2 -translate-x-1/2">
           <div className="rounded-md border border-amber-400/70 bg-[#0b0f19]/90 px-4 py-1 text-center font-broadcast text-xs sm:text-sm font-bold tracking-widest text-amber-300 uppercase shadow-lg whitespace-nowrap">
             {wrestlerHud.lastMoveBanner}
+          </div>
+        </div>
+      )}
+
+      {!isEntrance && !isFinished && (
+        <div className="pointer-events-none absolute bottom-3 left-1/2 hidden -translate-x-1/2 rounded-lg border border-slate-700/70 bg-[#0b0f19]/80 px-3 py-2 text-[10px] text-slate-300 shadow-xl sm:block">
+          <div className="flex items-center gap-3 whitespace-nowrap font-semibold uppercase tracking-wider">
+            <span className="text-slate-500">Actions</span>
+            <span><kbd className="rounded border border-slate-600 px-1 text-amber-300">WASD</kbd> Move</span>
+            <span><kbd className="rounded border border-slate-600 px-1 text-amber-300">J</kbd> Strike</span>
+            <span><kbd className="rounded border border-slate-600 px-1 text-amber-300">K</kbd> Grapple</span>
+            <span><kbd className="rounded border border-slate-600 px-1 text-amber-300">O</kbd> Reverse</span>
+            <span><kbd className="rounded border border-slate-600 px-1 text-amber-300">F</kbd> Finisher</span>
           </div>
         </div>
       )}
